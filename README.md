@@ -3,10 +3,10 @@
 **AI-powered behind-the-meter spread scoring and forecasting for data center site selection.**
 
 Combines real-time market data with machine learning to:
-- ✅ **Analyze current economics** across West Texas ERCOT settlement points
-- 🔮 **Predict future prices** using 8 trained LightGBM models (1h, 6h, 24h, 72h ahead)
-- 🧠 **Explain AI decisions** with SHAP explainability for transparent forecasts
-- 💰 **Calculate dispatch decisions** (generate vs. buy from grid) with BTM cost analysis
+- **Analyze current economics** across West Texas ERCOT settlement points
+- **Predict future prices** using 8 trained LightGBM models (1h, 6h, 24h, 72h ahead)
+- **Explain AI decisions** with SHAP explainability for transparent forecasts
+- **Calculate dispatch decisions** (generate vs. buy from grid) with BTM cost analysis
 
 ---
 
@@ -107,7 +107,7 @@ Frontend: http://localhost:5173
 | GET /api/site/{node_id}/analytics | Risk metrics + volatility data |
 | GET /api/site/{node_id}/scorecard | Historical performance ratings |
 
-### 🔮 ML Forecast Endpoint
+### ML Forecast Endpoint
 
 **Request:** `POST /api/site/{node_id}/forecast`
 
@@ -142,7 +142,7 @@ Frontend: http://localhost:5173
 | ERCOT MIS | 15-min LMP at West Texas nodes | Free — mis.ercot.com |
 | EIA Open Data | Daily Waha + Henry Hub prices | Free key — eia.gov/opendata |
 
-### 🧠 ML Models (8 Pre-trained LightGBM Models)
+### ML Models (8 Pre-trained LightGBM Models)
 | Model | Predicts | Horizon |
 |---|---|---|
 | `lgbm_elec_1h.txt` | Electricity prices | 1 hour ahead |
@@ -172,7 +172,7 @@ All endpoints work with simulated data for demo purposes.
 | Heat rate | 8.5 MMBtu/MWh | Gas burned per MWh output |
 | O&M cost | $3.50/MWh | Variable operating cost |
 
-### 🔮 Forecast Economics (ml_models.py) 
+### Forecast Economics (ml_models.py) 
 | Parameter | Default | Meaning |
 |---|---|---|
 | Heat rate | 7.2 MMBtu/MWh | More efficient forecast model |
@@ -204,19 +204,19 @@ Frontend → Vercel: connect GitHub repo, add VITE_API_URL env var, deploy.
 
 ---
 
-## 🚀 New Features: ML Forecasting & Explainability
+## New Features: ML Forecasting & Explainability
 
 ### Frontend Enhancements
-- **🎯 Horizon Cards:** 2x2 grid showing economics for 1h, 6h, 24h, 72h forecasts
-- **🧠 SHAP Explanations:** Interactive charts showing why models made each prediction
-- **📊 Economics Dashboard:** Real-time BTM costs, spreads, and dispatch decisions
-- **🎨 Color-coded Decisions:** Green "GENERATE" vs Red "BUY FROM GRID"
+- ** Horizon Cards:** 2x2 grid showing economics for 1h, 6h, 24h, 72h forecasts
+- ** SHAP Explanations:** Interactive charts showing why models made each prediction
+- ** Economics Dashboard:** Real-time BTM costs, spreads, and dispatch decisions
+- ** Color-coded Decisions:** Green "GENERATE" vs Red "BUY FROM GRID"
 
 ### Backend ML Pipeline
-- **⚡ Feature Engineering:** Automated lag feature calculation from 365 days of data
-- **🔮 Real-time Inference:** All 8 models load on startup for sub-second predictions  
-- **🧠 SHAP Integration:** Top 5 feature explanations for every forecast
-- **💡 Transparent AI:** Users see exactly why models predict each price
+- ** Feature Engineering:** Automated lag feature calculation from 365 days of data
+- ** Real-time Inference:** All 8 models load on startup for sub-second predictions  
+- ** SHAP Integration:** Top 5 feature explanations for every forecast
+- ** Transparent AI:** Users see exactly why models predict each price
 
 ### What Users Can Do
 1. **Click any settlement point** → View current economics and risk metrics
@@ -226,7 +226,7 @@ Frontend → Vercel: connect GitHub repo, add VITE_API_URL env var, deploy.
 
 ---
 
-## 🛠️ Technical Implementation
+## Technical Implementation
 
 ### ML Dependencies
 ```bash
