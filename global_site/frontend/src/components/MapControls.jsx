@@ -14,7 +14,25 @@ const SPREAD_OPTIONS = [
   { value: '15', label: '>= $15/MWh' },
 ]
 
-export default function MapControls({ search, filters, onSearchChange, onFilterChange, resultCount, totalCount }) {
+const TIME_WINDOW_OPTIONS = [
+  { value: '30d', label: '30 Days' },
+  { value: '90d', label: '90 Days' },
+  { value: '1y', label: '1 Year' },
+  { value: 'custom', label: 'Custom' },
+]
+
+export default function MapControls({ 
+  search, 
+  filters, 
+  onSearchChange, 
+  onFilterChange, 
+  resultCount, 
+  totalCount,
+  timeWindow,
+  customDateRange,
+  onTimeWindowChange,
+  onCustomDateRangeChange
+}) {
   return (
     <div style={styles.container}>
       <div style={styles.titleRow}>
@@ -56,6 +74,39 @@ export default function MapControls({ search, filters, onSearchChange, onFilterC
             ))}
           </select>
         </label>
+
+        <label style={styles.field}>
+          <span style={styles.label}>Time Window</span>
+          <select
+            value={timeWindow}
+            onChange={(e) => onTimeWindowChange(e.target.value)}
+            style={styles.select}
+          >
+            {TIME_WINDOW_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+
+        {timeWindow === 'custom' && (
+          <div style={styles.customDateRow}>
+            <input
+              type="date"
+              value={customDateRange.start}
+              onChange={(e) => onCustomDateRangeChange(prev => ({ ...prev, start: e.target.value }))}
+              style={styles.dateInput}
+              placeholder="Start"
+            />
+            <span style={styles.dateSeparator}>to</span>
+            <input
+              type="date"
+              value={customDateRange.end}
+              onChange={(e) => onCustomDateRangeChange(prev => ({ ...prev, end: e.target.value }))}
+              style={styles.dateInput}
+              placeholder="End"
+            />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -130,5 +181,25 @@ const styles = {
     padding: '8px 10px',
     outline: 'none',
     fontSize: '12px',
+  },
+  customDateRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginTop: '4px',
+  },
+  dateInput: {
+    flex: 1,
+    background: '#0d1117',
+    color: '#e6edf3',
+    border: '1px solid #2e4450',
+    borderRadius: '6px',
+    padding: '6px 8px',
+    fontSize: '11px',
+    outline: 'none',
+  },
+  dateSeparator: {
+    fontSize: '10px',
+    color: '#8b949e',
   },
 }

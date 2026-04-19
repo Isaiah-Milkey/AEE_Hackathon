@@ -21,6 +21,7 @@ sqlalchemy==2.0.30      # ORM for SQLite (local) and PostgreSQL (deployed)
 
 # --- Data Processing ---
 pandas==2.2.2           # Data manipulation for spread calculations
+gridstatusio==0.0.1     # GridStatus API client for ERCOT LMP data
 
 # --- Environment ---
 python-dotenv==1.0.1    # Loads .env file for API keys and DB URL

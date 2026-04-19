@@ -75,8 +75,10 @@ class SpreadScore(Base):
     avg_spread       = Column(Float)   # $/MWh — positive = BTM favorable
     avg_lmp          = Column(Float)   # $/MWh
     avg_gas_cost     = Column(Float)   # $/MWh (waha * heat_rate + om)
-    spread_color     = Column(String)  # hex color for map dot
+    spread_color     = Column(String)  # hex color for spread (green=good, red=bad)
     spread_label     = Column(String)  # "Strong" / "Moderate" / "Marginal" / "Unfavorable"
+    lmp_color        = Column(String)  # hex color for LMP (green=cheap, red=expensive)
+    lmp_label        = Column(String)  # "Very Low" / "Low" / "Moderate" / "High" / "Very High"
     data_start       = Column(DateTime)
     data_end         = Column(DateTime)
     last_updated     = Column(DateTime, default=datetime.utcnow)

@@ -1,17 +1,24 @@
 import React from 'react'
 
 const LAYER_CONFIG = [
-  { key: 'settlementPoints', label: 'Settlement Points', available: true  },
-  { key: 'gasPipelines',     label: 'Gas Pipelines',     available: true  },
-  { key: 'heatmap',          label: 'Heatmap Surface',   available: true  },
-  { key: 'windFarms',        label: 'Wind Farms',         available: false },
-  { key: 'solarFarms',       label: 'Solar Farms',        available: false },
+  { key: 'settlementPoints',  label: 'Settlement Points', available: true  },
+  { key: 'gasPipelines',      label: 'Gas Pipelines',      available: true  },
+  { key: 'heatmap',           label: 'Heatmap Surface',    available: true  },
+  { key: 'countyBoundaries',  label: 'County Boundaries', available: true  },
+  { key: 'voronoi',           label: 'Voronoi Regions',    available: false },
+  { key: 'windFarms',         label: 'Wind Farms',         available: false },
+  { key: 'solarFarms',        label: 'Solar Farms',        available: false },
 ]
 
 const HEATMAP_METRICS = [
   { key: 'avg_lmp', label: 'LMP' },
   { key: 'avg_spread', label: 'Avg Spread' },
   { key: 'avg_gas_cost', label: 'Avg Gas Cost' },
+]
+
+const COLOR_BY_OPTIONS = [
+  { key: 'lmp', label: 'LMP (green=cheap, red=expensive)' },
+  { key: 'spread', label: 'Spread (green=favorable, red=unfavorable)' },
 ]
 
 export default function LayerToggles({
@@ -21,6 +28,8 @@ export default function LayerToggles({
   onGasOpacityChange,
   heatmapMetric,
   onHeatmapMetricChange,
+  colorBy,
+  onColorByChange,
 }) {
   const toggle = (key) => {
     onChange(prev => ({ ...prev, [key]: !prev[key] }))
@@ -90,6 +99,28 @@ export default function LayerToggles({
           </div>
         </div>
       )}
+
+      {/* Color by selector - always visible */}
+      <div style={styles.sliderBlock}>
+        <div style={styles.sliderHeader}>
+          <span style={styles.sliderLabel}>Dot Color</span>
+        </div>
+        <div style={styles.metricGrid}>
+          {COLOR_BY_OPTIONS.map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onColorByChange(key)}
+              style={{
+                ...styles.metricButton,
+                ...(colorBy === key ? styles.metricButtonActive : {}),
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

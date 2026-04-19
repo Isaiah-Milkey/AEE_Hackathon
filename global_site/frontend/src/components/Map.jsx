@@ -94,6 +94,30 @@ function TexasOutlineLayer({ apiBase }) {
   )
 }
 
+function CountyBoundariesLayer({ apiBase }) {
+  const data = useGeoJsonOverlay(`${apiBase}/api/overlays/county-boundaries`)
+
+  if (!data) {
+    return null
+  }
+
+  return (
+    <Pane name="county-boundaries" style={{ zIndex: 380 }}>
+      <GeoJSON
+        data={data}
+        interactive={false}
+        style={() => ({
+          color: '#3d4a5c',
+          weight: 1,
+          opacity: 0.5,
+          fillColor: '#1a2332',
+          fillOpacity: 0.15,
+        })}
+      />
+    </Pane>
+  )
+}
+
 function GasPipelineLayer({ apiBase, opacity, tooltipEnabled }) {
   const data = useGeoJsonOverlay(`${apiBase}/api/overlays/gas-pipelines?max_allowable_offset=0.01`)
 
@@ -140,7 +164,7 @@ function MapViewportController() {
   return null
 }
 
-function MapClickHandler({ onMapClick, nodes }) {
+function MapClickHandler({ onMapClick, nodes}) {
   useMapEvents({
     click(e) {
       const { lat, lng } = e.latlng
@@ -165,8 +189,14 @@ function MapZoomTracker({ onZoomChange }) {
   return null
 }
 
-function SettlementPoint({ node, onNodeClick }) {
+function SettlementPoint({ node, onNodeClick, colorBy = 'lmp' }) {
   const nodeStyle = TYPE_STYLE[node.node_type] || TYPE_STYLE.resource
+  
+  // Determine which color to use based on colorBy setting
+  // colorBy='lmp' uses lmp_color (green=cheap, red=expensive)
+  // colorBy='spread' uses spread_color (green=favorable, red=unfavorable)
+  const dotColor = colorBy === 'lmp' ? (node.lmp_color || node.color || '#888888') : (node.color || '#888888')
+  const dotLabel = colorBy === 'lmp' ? node.lmp_label : node.label
 
   return (
     <React.Fragment key={node.id}>
@@ -175,7 +205,7 @@ function SettlementPoint({ node, onNodeClick }) {
         radius={nodeStyle.haloRadius}
         interactive={false}
         pathOptions={{
-          fillColor: node.color || '#888888',
+          fillColor: dotColor,
           fillOpacity: 0.16,
           color: '#f5fbff',
           opacity: 0.34,
@@ -186,7 +216,7 @@ function SettlementPoint({ node, onNodeClick }) {
         center={[node.lat, node.lng]}
         radius={nodeStyle.markerRadius}
         pathOptions={{
-          fillColor: node.color || '#888888',
+          fillColor: dotColor,
           fillOpacity: 0.93,
           color: nodeStyle.borderColor,
           opacity: 0.98,
@@ -200,54 +230,43 @@ function SettlementPoint({ node, onNodeClick }) {
         <Tooltip direction="top" offset={[0, -8]} opacity={0.95}>
           <div style={tooltipStyles.container}>
             <div style={tooltipStyles.name}>{node.name}</div>
-            <div style={tooltipStyles.id}>{node.id} · {node.zone}</div>
+            <div style={tooltipStyles.id}>{node.id}</div>
             <div style={tooltipStyles.type}>{formatNodeType(node.node_type)}</div>
             {node.avg_spread != null && (
-              <div style={{ ...tooltipStyles.spread, color: node.color }}>
-                Avg spread: {node.avg_spread > 0 ? '+' : ''}{node.avg_spread} $/MWh
+              <>
+                <div style={{
+                  ...tooltipStyles.spread,
+                  color: node.avg_spread >= 0 ? '#1a7a1a' : '#c0392b'
+                }}>
+                  {node.avg_spread > 0 ? '+' : ''}{node.avg_spread.toFixed(2)} $/MWh
+                </div>
+                <div style={tooltipStyles.label}>{dotLabel || node.label}</div>
+              </>
+            )}
+            {colorBy === 'lmp' && node.avg_lmp != null && (
+              <div style={tooltipStyles.lmp}>
+                LMP: ${node.avg_lmp.toFixed(2)}/MWh
               </div>
             )}
-            <div style={tooltipStyles.label}>{node.label}</div>
-            <div style={tooltipStyles.hint}>Click for full history -&gt;</div>
+            <div style={tooltipStyles.hint}>Click for details</div>
           </div>
         </Tooltip>
       </CircleMarker>
-      <CircleMarker
-        center={[node.lat, node.lng]}
-        radius={nodeStyle.centerRadius}
-        interactive={false}
-        pathOptions={{
-          fillColor: nodeStyle.centerColor,
-          fillOpacity: 1,
-          color: '#0d1117',
-          opacity: 1,
-          weight: 1,
-        }}
-      />
     </React.Fragment>
   )
 }
 
 function HeatmapSurface({ nodes, metric }) {
   const cells = useMemo(() => {
-    const metricNodes = nodes
-      .map((node) => ({
-        lat: node.lat,
-        lng: node.lng,
-        value: Number(node[metric]),
-      }))
-      .filter((node) => Number.isFinite(node.value))
+    const metricNodes = nodes.filter((n) => n[metric] != null)
+    if (!metricNodes.length) return []
 
-    if (metricNodes.length < 2) {
-      return []
-    }
+    const rawCells = []
+    let minValue = Infinity
+    let maxValue = -Infinity
 
     const latStep = (WEST_TEXAS_BOUNDS[1][0] - WEST_TEXAS_BOUNDS[0][0]) / HEATMAP_GRID.rows
     const lngStep = (WEST_TEXAS_BOUNDS[1][1] - WEST_TEXAS_BOUNDS[0][1]) / HEATMAP_GRID.cols
-
-    const rawCells = []
-    let minValue = Number.POSITIVE_INFINITY
-    let maxValue = Number.NEGATIVE_INFINITY
 
     for (let row = 0; row < HEATMAP_GRID.rows; row += 1) {
       for (let col = 0; col < HEATMAP_GRID.cols; col += 1) {
@@ -330,7 +349,7 @@ function formatNodeType(value) {
     .join(' ')
 }
 
-export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, heatmapMetric, onNodeClick, onMapClick }) {
+export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, heatmapMetric, colorBy = 'lmp', onNodeClick, onMapClick }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const pipelineTooltipEnabled = zoom >= PIPELINE_TOOLTIP_ZOOM
 
@@ -368,6 +387,10 @@ export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, he
 
       <TexasOutlineLayer apiBase={apiBase} />
 
+      {layers.countyBoundaries && (
+        <CountyBoundariesLayer apiBase={apiBase} />
+      )}
+
       {layers.heatmap && (
         <HeatmapSurface
           nodes={nodes}
@@ -390,6 +413,7 @@ export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, he
               key={node.id}
               node={node}
               onNodeClick={onNodeClick}
+              colorBy={colorBy}
             />
           ))}
         </Pane>
@@ -432,6 +456,12 @@ const tooltipStyles = {
     color: '#444',
     fontSize: '11px',
     marginBottom: '3px',
+  },
+  lmp: {
+    color: '#666',
+    fontSize: '11px',
+    marginBottom: '3px',
+    fontStyle: 'italic',
   },
   hint: {
     color: '#999',

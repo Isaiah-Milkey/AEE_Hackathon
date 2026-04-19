@@ -11,10 +11,17 @@ export default function App() {
   const [nodes, setNodes] = useState([])
   const [selectedSite, setSelectedSite] = useState(null)
   const [liveData, setLiveData] = useState(null)
+  const [analyticsData, setAnalyticsData] = useState(null)
+  const [scorecardData, setScorecardData] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [lastRefresh, setLastRefresh] = useState(null)
   const [gasPipelineOpacity, setGasPipelineOpacity] = useState(0.35)
   const [heatmapMetric, setHeatmapMetric] = useState('avg_lmp')
+  const [colorBy, setColorBy] = useState('lmp')  // 'lmp' or 'spread' - controls dot colors
   const [search, setSearch] = useState('')
+  const [timeWindow, setTimeWindow] = useState('90d')
+  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' })
   const [filters, setFilters] = useState({
     nodeType: 'all',
     spread: 'all',
@@ -23,6 +30,8 @@ export default function App() {
     settlementPoints: true,
     gasPipelines: true,
     heatmap: false,
+    countyBoundaries: false,
+    voronoi: false,
     windFarms: false,
     solarFarms: false,
   })
@@ -39,14 +48,41 @@ export default function App() {
       })
   }, [])
 
+  // Helper to get window params for API calls
+  const getWindowParams = () => {
+    if (timeWindow === 'custom') {
+      return{ window: 'custom', start_date: customDateRange.start, end_date: customDateRange.end }
+    }
+    return{ window: timeWindow }
+  }
+
   const handleNodeClick = async (nodeId) => {
     try {
-      const [detail, live] = await Promise.all([
-        axios.get(`${API}/api/site/${nodeId}`),
-        axios.get(`${API}/api/site/${nodeId}/live`),
+      const windowParams = getWindowParams()
+      
+      // Use new consolidated location economics endpoint
+      // First get node coordinates
+      const node = nodes.find(n => n.id === nodeId)
+      if (!node) return
+      
+      const [economics, detail, analytics, scorecard] = await Promise.all([
+        axios.get(`${API}/api/location/economics`, {
+          params: { lat: node.lat, lng: node.lng }
+        }),
+        axios.get(`${API}/api/site/${nodeId}`, { params: windowParams }),
+        axios.get(`${API}/api/site/${nodeId}/analytics`, { params: windowParams }),
+        axios.get(`${API}/api/site/${nodeId}/scorecard`, { params: windowParams }),
       ])
-      setSelectedSite(detail.data)
-      setLiveData(live.data)
+      
+      setSelectedSite({
+        ...detail.data,
+        nodeInfo: economics.data.nearest_node,
+        distanceMiles: 0,
+        accuracyFlag: false,
+      })
+      setLiveData(economics.data.live)
+      setAnalyticsData(analytics.data)
+      setScorecardData(scorecard.data)
     } catch (err) {
       console.error('Failed to load site detail:', err)
     }
@@ -54,59 +90,124 @@ export default function App() {
 
   const handleMapClick = async (lat, lng) => {
     try {
-      const nearest = await axios.get(`${API}/api/nearest`, {
+      const windowParams = getWindowParams()
+      
+      // Use new consolidated location economics endpoint
+      const economics = await axios.get(`${API}/api/location/economics`, {
         params: { lat, lng }
       })
-      const [detail, live] = await Promise.all([
-        axios.get(`${API}/api/site/${nearest.data.nearest_node}`),
-        axios.get(`${API}/api/site/${nearest.data.nearest_node}/live`),
+      
+      const nodeId = economics.data.nearest_node.id
+      
+      const [detail, analytics, scorecard] = await Promise.all([
+        axios.get(`${API}/api/site/${nodeId}`, { params: windowParams }),
+        axios.get(`${API}/api/site/${nodeId}/analytics`, { params: windowParams }),
+        axios.get(`${API}/api/site/${nodeId}/scorecard`, { params: windowParams }),
       ])
+      
       setSelectedSite({
         ...detail.data,
         customClick: true,
         clickedLat: lat,
         clickedLng: lng,
-        distanceMiles: nearest.data.distance_miles,
-        accuracyFlag: nearest.data.accuracy_flag,
+        nodeInfo: economics.data.nearest_node,
+        distanceMiles: economics.data.distance_miles,
+        accuracyFlag: economics.data.accuracy_flag,
       })
-      setLiveData(live.data)
+      setLiveData(economics.data.live)
+      setAnalyticsData(analytics.data)
+      setScorecardData(scorecard.data)
     } catch (err) {
       console.error('Failed to find nearest node:', err)
     }
   }
 
-  const filteredNodes = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase()
-    return nodes.filter((node) => {
-      const matchesSearch = !searchTerm || [
-        node.name,
-        node.id,
-        node.zone,
-      ].some((value) => value?.toLowerCase().includes(searchTerm))
+  const handleRefresh = async () => {
+    if (!selectedSite?.node?.id) return
+    
+    setRefreshing(true)
+    try {
+      const nodeId = selectedSite.node.id || selectedSite.nodeInfo?.id
+      const response = await axios.post(`${API}/api/site/${nodeId}/refresh`)
+      setLiveData(response.data)
+      setLastRefresh(response.data.timestamp)
+    } catch (err) {
+      console.error('Failed to refresh live data:', err)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
-      const matchesNodeType = filters.nodeType === 'all' || node.node_type === filters.nodeType
-
-      let matchesSpread = true
-      if (filters.spread === 'positive') {
-        matchesSpread = (node.avg_spread ?? Number.NEGATIVE_INFINITY) > 0
-      } else if (filters.spread !== 'all') {
-        matchesSpread = (node.avg_spread ?? Number.NEGATIVE_INFINITY) >= Number(filters.spread)
+  const handleTimeWindowChange = async (newWindow) => {
+    setTimeWindow(newWindow)
+    
+    // If a site is selected, reload data with new window
+    if (selectedSite?.node?.id || selectedSite?.nodeInfo?.id) {
+      const nodeId = selectedSite.node?.id || selectedSite.nodeInfo?.id
+      const windowParams = newWindow === 'custom' 
+        ? { window: 'custom', start_date: customDateRange.start, end_date: customDateRange.end }
+        : { window: newWindow }
+      
+      try {
+        const [detail, analytics, scorecard] = await Promise.all([
+          axios.get(`${API}/api/site/${nodeId}`, { params: windowParams }),
+          axios.get(`${API}/api/site/${nodeId}/analytics`, { params: windowParams }),
+          axios.get(`${API}/api/site/${nodeId}/scorecard`, { params: windowParams }),
+        ])
+        
+        setSelectedSite(prev => ({ ...prev, ...detail.data }))
+        setAnalyticsData(analytics.data)
+        setScorecardData(scorecard.data)
+      } catch (err) {
+        console.error('Failed to reload data with new window:', err)
       }
-
-      return matchesSearch && matchesNodeType && matchesSpread
-    })
-  }, [nodes, search, filters])
+    }
+  }
 
   const handleClosePanel = () => {
     setSelectedSite(null)
     setLiveData(null)
+    setAnalyticsData(null)
+    setScorecardData(null)
   }
 
+  // Filter nodes based on search and filters
+  const filteredNodes = useMemo(() => {
+    return nodes.filter((node) => {
+      // Search filter
+      if (search) {
+        const searchLower = search.toLowerCase()
+        const matchesSearch = 
+          node.name?.toLowerCase().includes(searchLower) ||
+          node.id?.toLowerCase().includes(searchLower) ||
+          node.zone?.toLowerCase().includes(searchLower)
+        if (!matchesSearch) return false
+      }
+      
+      // Node type filter
+      if (filters.nodeType !== 'all' && node.node_type !== filters.nodeType) {
+        return false
+      }
+      
+      // Spread filter
+      if (filters.spread !== 'all') {
+        const spread = node.avg_spread
+        if (filters.spread === 'positive' && spread <= 0) return false
+        if (filters.spread === '8' && spread < 8) return false
+        if (filters.spread === '15' && spread < 15) return false
+      }
+      
+      return true
+    })
+  }, [nodes, search, filters])
+
   return (
-    <div style={{ display: 'flex', height: '100vh', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d1117' }}>
       <header style={styles.header}>
-        <span style={styles.headerTitle}>BTM SPREAD HEATMAP</span>
-        <span style={styles.headerSub}>West Texas · ERCOT · Behind-the-Meter Economics</span>
+        <div style={styles.headerTitle}>WEST TEXAS ENERGY HEATMAP</div>
+        <div style={styles.headerSub}>
+          {loading ? 'Loading...' : `${nodes.length} nodes · ERCOT West Texas`}
+        </div>
       </header>
 
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
@@ -121,8 +222,12 @@ export default function App() {
           <MapControls
             search={search}
             filters={filters}
+            timeWindow={timeWindow}
+            customDateRange={customDateRange}
             onSearchChange={setSearch}
             onFilterChange={(key, value) => setFilters((prev) => ({ ...prev, [key]: value }))}
+            onTimeWindowChange={handleTimeWindowChange}
+            onCustomDateRangeChange={setCustomDateRange}
             resultCount={filteredNodes.length}
             totalCount={nodes.length}
           />
@@ -134,6 +239,8 @@ export default function App() {
             onGasOpacityChange={setGasPipelineOpacity}
             heatmapMetric={heatmapMetric}
             onHeatmapMetricChange={setHeatmapMetric}
+            colorBy={colorBy}
+            onColorByChange={setColorBy}
           />
 
           <MapView
@@ -142,6 +249,7 @@ export default function App() {
             layers={layers}
             gasPipelineOpacity={gasPipelineOpacity}
             heatmapMetric={heatmapMetric}
+            colorBy={colorBy}
             onNodeClick={handleNodeClick}
             onMapClick={handleMapClick}
           />
@@ -152,6 +260,10 @@ export default function App() {
             site={selectedSite}
             live={liveData}
             onClose={handleClosePanel}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+            analytics={analyticsData}
+            scorecard={scorecardData}
           />
         )}
       </div>

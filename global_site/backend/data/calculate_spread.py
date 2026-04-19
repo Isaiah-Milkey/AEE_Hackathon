@@ -11,9 +11,15 @@ Positive spread → grid is more expensive → run your BTM generator
 Negative spread → grid is cheaper → buy from grid
 """
 
+import os
+import sys
 from datetime import datetime
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from db.database import SessionLocal, Node, LMPRecord, GasPriceRecord, SpreadScore
 
 # ---------------------------------------------------------------------------
@@ -38,6 +44,31 @@ def get_spread_color(avg_spread: float) -> tuple[str, str]:
         return "#e07b00", "Weak"         # orange
     else:
         return "#c0392b", "Unfavorable"  # red
+
+
+def get_lmp_color(avg_lmp: float) -> tuple[str, str]:
+    """
+    Maps an LMP value to a hex color using a diverging green-red scale.
+    Low LMP (cheap) = green, High LMP (expensive) = red.
+    Returns (hex_color, label)
+    
+    LMP thresholds (in $/MWh):
+    - < 20: Very Low (green)
+    - 20-30: Low (light green)
+    - 30-40: Moderate (yellow)
+    - 40-50: High (orange)
+    - > 50: Very High (red)
+    """
+    if avg_lmp < 20:
+        return "#1a7a1a", "Very Low"       # deep green - cheap
+    elif avg_lmp < 30:
+        return "#5aaa2a", "Low"            # light green
+    elif avg_lmp < 40:
+        return "#c8b400", "Moderate"      # yellow
+    elif avg_lmp < 50:
+        return "#e07b00", "High"          # orange
+    else:
+        return "#c0392b", "Very High"      # red - expensive
 
 
 def calculate_spreads():
@@ -109,7 +140,8 @@ def calculate_spreads():
         avg_lmp      = sum(lmps)    / len(lmps)
         avg_gas_cost = sum(costs)   / len(costs)
 
-        color, label = get_spread_color(avg_spread)
+        spread_color, spread_label = get_spread_color(avg_spread)
+        lmp_color, lmp_label = get_lmp_color(avg_lmp)
 
         # Upsert — delete existing score and replace
         db.query(SpreadScore).filter(SpreadScore.node_id == node.id).delete()
@@ -118,14 +150,16 @@ def calculate_spreads():
             avg_spread   = round(avg_spread,   2),
             avg_lmp      = round(avg_lmp,      2),
             avg_gas_cost = round(avg_gas_cost, 2),
-            spread_color = color,
-            spread_label = label,
+            spread_color = spread_color,
+            spread_label = spread_label,
+            lmp_color    = lmp_color,
+            lmp_label    = lmp_label,
             data_start   = data_start,
             data_end     = data_end,
             last_updated = datetime.utcnow(),
         ))
 
-        print(f"  {node.name:25s} avg_spread=${avg_spread:+.2f}/MWh  [{label}]")
+        print(f"  {node.name:25s} avg_spread=${avg_spread:+.2f}/MWh  [{spread_label}] (LMP: ${avg_lmp:.2f}/MWh [{lmp_label}])")
 
     db.commit()
     db.close()
