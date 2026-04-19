@@ -371,6 +371,24 @@ def request_site_forecast(
             features, forecast_time
         )
 
+        # Compute SHAP explanations for all electricity horizons
+        explanations = model_service.explain_electricity_horizons(features)
+
+        # Compute BTM economics and decision per electricity horizon
+        BTM_HEAT_RATE = 7.2
+        BTM_OM_COST = 5.0
+        henry_hub = float(features[0])
+        btm_cost = round(henry_hub * BTM_HEAT_RATE + BTM_OM_COST, 2)
+
+        for horizon in ['1h', '6h', '24h', '72h']:
+            elec = forecast_results['electricity'].get(horizon, {})
+            if elec.get('price') is not None:
+                spread = round(elec['price'] - btm_cost, 2)
+                elec['btm_cost'] = btm_cost
+                elec['spread'] = spread
+                elec['decision'] = 'GENERATE' if spread > 0 else 'BUY FROM GRID'
+                elec['explanation'] = explanations.get(horizon, [])
+
         # Determine data quality
         sufficient_history = model_status['loaded_models'] >= 6  # At least 6 of 8 models working
 

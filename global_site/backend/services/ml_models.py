@@ -15,6 +15,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+FEATURE_NAMES = [
+    'henry_hub_price',
+    'hour',
+    'day_of_week',
+    'month',
+    'is_weekend',
+    'price_lag_1h',
+    'price_lag_24h',
+    'price_lag_168h',
+    'gas_lag_24h',
+    'gas_lag_168h',
+]
+
+
 class ModelLoadingError(Exception):
     """Raised when model files cannot be loaded."""
     pass
@@ -221,6 +235,26 @@ class ModelService:
         if np.any(np.isinf(features)):
             raise ValueError("Features contain infinite values")
 
+    def explain_electricity_horizons(self, features: np.ndarray) -> Dict[str, list]:
+        """
+        Compute SHAP explanations for all 4 electricity horizons.
+
+        Returns:
+            {horizon: [top-5 feature dicts]} for '1h', '6h', '24h', '72h'
+        """
+        results = {}
+        for horizon in ['1h', '6h', '24h', '72h']:
+            model_key = f"elec_{horizon}"
+            if model_key in self.models:
+                try:
+                    results[horizon] = explain_prediction(self.models[model_key], features)
+                except Exception as e:
+                    logger.error(f"SHAP explanation failed for {model_key}: {e}")
+                    results[horizon] = []
+            else:
+                results[horizon] = []
+        return results
+
     def predict_with_validation(
         self,
         features: np.ndarray,
@@ -246,6 +280,35 @@ class ModelService:
         model_status = self.get_model_status()
 
         return forecast_results, model_status
+
+
+def explain_prediction(model: lgb.Booster, features: np.ndarray) -> list:
+    """
+    Compute SHAP values using LightGBM's native pred_contrib and return top 5 features.
+
+    Args:
+        model: Loaded LightGBM Booster
+        features: 10-element feature array (float32)
+
+    Returns:
+        List of up to 5 dicts sorted by abs(shap_impact) descending:
+        [{'feature_name': str, 'value': float, 'shap_impact': float}, ...]
+    """
+    features_2d = features.reshape(1, -1).astype(np.float64)
+    # pred_contrib returns (n_samples, n_features + 1); last column is the bias/expected value
+    contrib = model.predict(features_2d, pred_contrib=True)[0]
+    shap_vals = contrib[:-1]  # drop the bias term
+
+    entries = [
+        {
+            'feature_name': FEATURE_NAMES[i],
+            'value': round(float(features[i]), 4),
+            'shap_impact': round(float(shap_vals[i]), 4),
+        }
+        for i in range(len(FEATURE_NAMES))
+    ]
+    entries.sort(key=lambda x: abs(x['shap_impact']), reverse=True)
+    return entries[:5]
 
 
 # Global model service instance

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, ReferenceLine, Legend, Area, ComposedChart
+  Tooltip, ResponsiveContainer, ReferenceLine, Legend, Area, ComposedChart,
+  BarChart, Bar, Cell,
 } from 'recharts'
 
 export default function SitePanel({ site, live, onClose, onRefresh, refreshing, analytics, scorecard }) {
@@ -12,7 +13,7 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
   const [forecastMessage, setForecastMessage] = useState('')
   const [forecastError, setForecastError] = useState('')
   const [forecastData, setForecastData] = useState(null)
-  const [selectedHorizon, setSelectedHorizon] = useState('24h')
+  const [selectedHorizon, setSelectedHorizon] = useState('1h')
 
   const apiBase = import.meta.env.VITE_API_URL || ''
 
@@ -355,9 +356,6 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
         <div style={styles.forecastSection}>
           <div style={styles.sectionTitle}>FORECAST</div>
           <div style={styles.forecastCard}>
-            <p style={styles.forecastText}>
-              Generate ML-powered forecasts for electricity and gas prices using 8 trained models predicting 1h, 6h, 24h, and 72h ahead.
-            </p>
             <button
               onClick={handleRunForecast}
               disabled={forecastLoading}
@@ -372,94 +370,162 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
               <div style={styles.forecastError}>{forecastError}</div>
             )}
 
-            {/* Forecast Results */}
             {forecastData && forecastData.forecasts && (
-              <div style={styles.forecastResults}>
-                {/* Time Horizon Selector */}
-                <div style={styles.horizonSelector}>
-                  <span style={styles.horizonLabel}>Time Horizon:</span>
-                  {['1h', '6h', '24h', '72h'].map(horizon => (
-                    <button
-                      key={horizon}
-                      onClick={() => setSelectedHorizon(horizon)}
-                      style={selectedHorizon === horizon ?
-                        { ...styles.horizonButton, ...styles.horizonButtonActive } :
-                        styles.horizonButton}
-                    >
-                      {horizon}
-                    </button>
-                  ))}
+              <>
+                {/* Horizon Cards */}
+                <div style={styles.horizonCards}>
+                  {['1h', '6h', '24h', '72h'].map(horizon => {
+                    const elec = forecastData.forecasts.electricity?.[horizon]
+                    if (!elec || elec.price == null) return null
+                    const isSelected = selectedHorizon === horizon
+                    const isGenerate = elec.decision === 'GENERATE'
+                    return (
+                      <div
+                        key={horizon}
+                        onClick={() => setSelectedHorizon(horizon)}
+                        style={{
+                          ...styles.horizonCard,
+                          ...(isSelected ? styles.horizonCardSelected : {}),
+                        }}
+                      >
+                        <div style={styles.horizonCardLabel}>{horizon}</div>
+                        <div style={styles.horizonCardPrice}>${elec.price}</div>
+                        <div style={styles.horizonCardUnit}>$/MWh</div>
+                        <div style={styles.horizonCardBtm}>BTM ${elec.btm_cost}</div>
+                        <div style={{
+                          ...styles.horizonCardSpread,
+                          color: elec.spread >= 0 ? '#5aaa2a' : '#c0392b',
+                        }}>
+                          {elec.spread >= 0 ? '+' : ''}{elec.spread}
+                        </div>
+                        <div style={{
+                          ...styles.horizonDecisionBadge,
+                          background: isGenerate ? '#1a3a1a' : '#3a1a1a',
+                          color: isGenerate ? '#5aaa2a' : '#c0392b',
+                          borderColor: isGenerate ? '#5aaa2a' : '#c0392b',
+                        }}>
+                          {isGenerate ? 'GENERATE' : 'BUY GRID'}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
 
-                {/* Forecast Values Display */}
-                <div style={styles.forecastGrid}>
-                  {forecastData.forecasts.electricity && forecastData.forecasts.electricity[selectedHorizon] && (
-                    <div style={styles.forecastItem}>
-                      <div style={styles.forecastItemLabel}>Electricity Price</div>
-                      <div style={styles.forecastItemValue}>
-                        ${forecastData.forecasts.electricity[selectedHorizon].price}/MWh
-                      </div>
-                      <div style={styles.forecastItemTime}>
-                        {new Date(forecastData.forecasts.electricity[selectedHorizon].timestamp).toLocaleString()}
-                      </div>
-                    </div>
-                  )}
+                {/* Explainability Panel */}
+                {forecastData.forecasts.electricity?.[selectedHorizon]?.explanation?.length > 0 && (
+                  <ExplainabilityPanel
+                    horizon={selectedHorizon}
+                    price={forecastData.forecasts.electricity[selectedHorizon].price}
+                    explanation={forecastData.forecasts.electricity[selectedHorizon].explanation}
+                  />
+                )}
 
-                  {forecastData.forecasts.gas && forecastData.forecasts.gas[selectedHorizon] && (
-                    <div style={styles.forecastItem}>
-                      <div style={styles.forecastItemLabel}>Gas Price</div>
-                      <div style={styles.forecastItemValue}>
-                        ${forecastData.forecasts.gas[selectedHorizon].price}/MMBtu
-                      </div>
-                      <div style={styles.forecastItemTime}>
-                        {new Date(forecastData.forecasts.gas[selectedHorizon].timestamp).toLocaleString()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Data Quality Indicators */}
+                {/* Model status */}
                 {forecastData.data_quality && (
                   <div style={styles.dataQuality}>
-                    <div style={styles.dataQualityTitle}>Model Status</div>
                     <div style={styles.dataQualityItem}>
                       Models loaded: {forecastData.data_quality.models_loaded}
                     </div>
-                    {forecastData.data_quality.missing_models && forecastData.data_quality.missing_models.length > 0 && (
+                    {forecastData.data_quality.missing_models?.length > 0 && (
                       <div style={styles.dataQualityWarning}>
-                        Missing models: {forecastData.data_quality.missing_models.join(', ')}
+                        Missing: {forecastData.data_quality.missing_models.join(', ')}
                       </div>
                     )}
                   </div>
                 )}
-
-                {/* Forecast Summary Table */}
-                <div style={styles.forecastTable}>
-                  <div style={styles.forecastTableTitle}>All Forecast Results</div>
-                  <div style={styles.forecastTableGrid}>
-                    <div style={styles.forecastTableHeader}>Time</div>
-                    <div style={styles.forecastTableHeader}>Electricity ($/MWh)</div>
-                    <div style={styles.forecastTableHeader}>Gas ($/MMBtu)</div>
-
-                    {['1h', '6h', '24h', '72h'].map(horizon => (
-                      <React.Fragment key={horizon}>
-                        <div style={styles.forecastTableCell}>{horizon}</div>
-                        <div style={styles.forecastTableCell}>
-                          {forecastData.forecasts.electricity?.[horizon]?.price || 'N/A'}
-                        </div>
-                        <div style={styles.forecastTableCell}>
-                          {forecastData.forecasts.gas?.[horizon]?.price || 'N/A'}
-                        </div>
-                      </React.Fragment>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              </>
             )}
           </div>
         </div>
       )}
 
+    </div>
+  )
+}
+
+const HOUR_LABELS = [
+  '12am','1am','2am','3am','4am','5am','6am','7am','8am','9am','10am','11am',
+  '12pm','1pm','2pm','3pm','4pm','5pm','6pm','7pm','8pm','9pm','10pm','11pm',
+]
+const DAY_LABELS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday']
+const MONTH_LABELS = ['','January','February','March','April','May','June','July','August','September','October','November','December']
+
+function formatFeatureLabel(featureName, value) {
+  const v = Number(value)
+  switch (featureName) {
+    case 'price_lag_1h':    return `Price 1h ago: $${v.toFixed(2)}/MWh`
+    case 'price_lag_24h':   return `Price yesterday: $${v.toFixed(2)}/MWh`
+    case 'price_lag_168h':  return `Price last week: $${v.toFixed(2)}/MWh`
+    case 'henry_hub_price': return `Gas price: $${v.toFixed(2)}/MMBtu`
+    case 'gas_lag_24h':     return `Gas yesterday: $${v.toFixed(2)}/MMBtu`
+    case 'gas_lag_168h':    return `Gas last week: $${v.toFixed(2)}/MMBtu`
+    case 'hour':            return `Hour of day: ${HOUR_LABELS[Math.round(v)] ?? v}`
+    case 'day_of_week':     return `Day: ${DAY_LABELS[Math.round(v)] ?? v}`
+    case 'month':           return `Month: ${MONTH_LABELS[Math.round(v)] ?? v}`
+    case 'is_weekend':      return `Weekend: ${v > 0.5 ? 'Yes' : 'No'}`
+    default:                return featureName
+  }
+}
+
+function generateSummary(explanation) {
+  if (!explanation || explanation.length === 0) return ''
+  const categories = {
+    price_lag_1h:   'recent price momentum',
+    price_lag_24h:  "yesterday's prices",
+    price_lag_168h: "last week's prices",
+    hour:           'time of day',
+    day_of_week:    'day of week',
+    month:          'seasonal patterns',
+    is_weekend:     'weekend effect',
+    henry_hub_price:'current gas prices',
+    gas_lag_24h:    "yesterday's gas prices",
+    gas_lag_168h:   "last week's gas prices",
+  }
+  const top2 = explanation.slice(0, 2).map(f => categories[f.feature_name] || f.feature_name)
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1)
+  return `${cap(top2[0])} and ${top2[1]} were the dominant drivers of this forecast.`
+}
+
+function ExplainabilityPanel({ horizon, price, explanation }) {
+  const chartData = explanation.map(f => ({
+    label: formatFeatureLabel(f.feature_name, f.value),
+    impact: f.shap_impact,
+  }))
+  const summary = generateSummary(explanation)
+
+  return (
+    <div style={styles.explainPanel}>
+      <div style={styles.explainTitle}>
+        Why did the model predict ${price}/MWh for {horizon}?
+      </div>
+      <ResponsiveContainer width="100%" height={190}>
+        <BarChart data={chartData} layout="vertical" margin={{ top: 4, right: 16, left: 0, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#21262d" horizontal={false} />
+          <XAxis
+            type="number"
+            domain={['auto', 'auto']}
+            tick={{ fontSize: 9, fill: '#8b949e' }}
+            tickFormatter={v => v.toFixed(1)}
+          />
+          <YAxis
+            type="category"
+            dataKey="label"
+            width={158}
+            tick={{ fontSize: 9, fill: '#c9d1d9' }}
+          />
+          <Tooltip
+            contentStyle={{ background: '#161b22', border: '1px solid #30363d', fontSize: '11px' }}
+            formatter={val => [`${val > 0 ? '+' : ''}${val.toFixed(2)} $/MWh impact`]}
+          />
+          <ReferenceLine x={0} stroke="#555" />
+          <Bar dataKey="impact" radius={[0, 2, 2, 0]}>
+            {chartData.map((entry, i) => (
+              <Cell key={i} fill={entry.impact >= 0 ? '#f0c419' : '#58a6ff'} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div style={styles.explainSummary}>{summary}</div>
     </div>
   )
 }
@@ -877,6 +943,79 @@ const styles = {
   chartHint: {
     color:        '#484f58',
     marginBottom: '8px',
+  },
+  horizonCards: {
+    display:             'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap:                 '6px',
+    marginBottom:        '12px',
+  },
+  horizonCard: {
+    background:   '#0d1117',
+    border:       '1px solid #30363d',
+    borderRadius: '6px',
+    padding:      '8px 4px',
+    cursor:       'pointer',
+    textAlign:    'center',
+    display:      'flex',
+    flexDirection:'column',
+    gap:          '3px',
+  },
+  horizonCardSelected: {
+    borderColor: '#58a6ff',
+    background:  '#0d1f33',
+  },
+  horizonCardLabel: {
+    fontSize:     '10px',
+    fontWeight:   700,
+    color:        '#8b949e',
+    letterSpacing:'0.08em',
+  },
+  horizonCardPrice: {
+    fontSize:   '14px',
+    fontWeight: 700,
+    color:      '#e6edf3',
+  },
+  horizonCardUnit: {
+    fontSize: '8px',
+    color:    '#484f58',
+  },
+  horizonCardBtm: {
+    fontSize: '9px',
+    color:    '#8b949e',
+  },
+  horizonCardSpread: {
+    fontSize:   '11px',
+    fontWeight: 700,
+  },
+  horizonDecisionBadge: {
+    fontSize:     '7px',
+    fontWeight:   700,
+    letterSpacing:'0.04em',
+    border:       '1px solid',
+    borderRadius: '3px',
+    padding:      '2px 3px',
+    marginTop:    '2px',
+  },
+  explainPanel: {
+    background:   '#0d1117',
+    border:       '1px solid #21262d',
+    borderRadius: '6px',
+    padding:      '10px',
+    marginBottom: '10px',
+  },
+  explainTitle: {
+    fontSize:     '11px',
+    fontWeight:   700,
+    color:        '#e6edf3',
+    marginBottom: '8px',
+  },
+  explainSummary: {
+    fontSize:   '10px',
+    color:      '#8b949e',
+    fontStyle:  'italic',
+    marginTop:  '8px',
+    lineHeight: '1.5',
   },
   scorecardSection: {
     padding:      '12px 16px',
