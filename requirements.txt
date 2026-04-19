@@ -1,0 +1,26 @@
+# BTM Heatmap — Backend Dependencies
+# Tested on Python 3.12.3
+# Minimum supported: Python 3.10
+#
+# Install:
+#   pip install -r requirements.txt
+#
+# If using system Python without a venv:
+#   pip install -r requirements.txt --break-system-packages
+
+# --- API Framework ---
+fastapi==0.111.0        # Web framework for the API endpoints
+uvicorn==0.29.0         # ASGI server to run FastAPI
+
+# --- HTTP Clients ---
+httpx==0.27.0           # Async HTTP client for ERCOT + EIA API calls
+aiohttp==3.9.5          # Async HTTP — used in data pipeline fetchers
+
+# --- Database ---
+sqlalchemy==2.0.30      # ORM for SQLite (local) and PostgreSQL (deployed)
+
+# --- Data Processing ---
+pandas==2.2.2           # Data manipulation for spread calculations
+
+# --- Environment ---
+python-dotenv==1.0.1    # Loads .env file for API keys and DB URL
