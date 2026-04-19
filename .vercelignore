@@ -1,6 +1,7 @@
-backend/
-*.py
-*.pyc
-requirements.txt
-seed.py
-__pycache__/
+global_site/backend/
+global_site/__init__.py
+global_site/__pycache__/
+**/*.py
+**/*.pyc
+**/__pycache__/
+**/requirements.txt
