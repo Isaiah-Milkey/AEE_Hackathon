@@ -5,3 +5,5 @@ global_site/__pycache__/
 **/*.pyc
 **/__pycache__/
 **/requirements.txt
+render.yaml
+.env.example

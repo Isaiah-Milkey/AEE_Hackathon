@@ -1,0 +1,8 @@
+{
+  "buildCommand": "cd global_site/frontend && npm install && npm run build",
+  "outputDirectory": "global_site/frontend/dist",
+  "framework": "vite",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
