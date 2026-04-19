@@ -250,6 +250,7 @@ export default function App() {
             gasPipelineOpacity={gasPipelineOpacity}
             heatmapMetric={heatmapMetric}
             colorBy={colorBy}
+            selectedSite={selectedSite}
             onNodeClick={handleNodeClick}
             onMapClick={handleMapClick}
           />

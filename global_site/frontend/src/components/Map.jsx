@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Tooltip, GeoJSON, Pane, Rectangle, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Tooltip, GeoJSON, Pane, Rectangle, Marker, useMap, useMapEvents } from 'react-leaflet'
+import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 
 const WEST_TEXAS_CENTER = [31.5, -102.0]
@@ -334,6 +335,28 @@ function HeatmapSurface({ nodes, metric }) {
   )
 }
 
+const CLICKED_LOCATION_ICON = new L.DivIcon({
+  className: 'clicked-location-icon',
+  html: `<div style="width: 18px; height: 18px; transform: rotate(45deg); background: #7ee0ff; border: 2px solid #f5fbff; box-shadow: 0 0 0 6px rgba(126, 224, 255, 0.22); border-radius: 3px;"></div>`,
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+  tooltipAnchor: [0, -12],
+})
+
+function ClickedLocationMarker({ lat, lng, label }) {
+  return (
+    <Marker
+      position={[lat, lng]}
+      icon={CLICKED_LOCATION_ICON}
+      interactive={false}
+    >
+      <Tooltip direction="top" offset={[0, -10]} opacity={0.92} permanent>
+        {label}
+      </Tooltip>
+    </Marker>
+  )
+}
+
 function getHeatColor(normalized) {
   const clamped = Math.max(0, Math.min(1, normalized))
   const hue = 220 - (190 * clamped)
@@ -349,7 +372,7 @@ function formatNodeType(value) {
     .join(' ')
 }
 
-export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, heatmapMetric, colorBy = 'lmp', onNodeClick, onMapClick }) {
+export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, heatmapMetric, colorBy = 'lmp', selectedSite, onNodeClick, onMapClick }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM)
   const pipelineTooltipEnabled = zoom >= PIPELINE_TOOLTIP_ZOOM
 
@@ -384,6 +407,16 @@ export default function MapView({ apiBase, nodes, layers, gasPipelineOpacity, he
       />
 
       <MapClickHandler onMapClick={onMapClick} nodes={nodes} />
+
+      {selectedSite?.customClick && selectedSite.clickedLat != null && selectedSite.clickedLng != null && (
+        <Pane name="clicked-location" style={{ zIndex: 480 }}>
+          <ClickedLocationMarker
+            lat={selectedSite.clickedLat}
+            lng={selectedSite.clickedLng}
+            label="estimated from closest site"
+          />
+        </Pane>
+      )}
 
       <TexasOutlineLayer apiBase={apiBase} />
 

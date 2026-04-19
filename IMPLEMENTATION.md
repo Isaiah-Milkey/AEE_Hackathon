@@ -17,12 +17,14 @@ BTM Heatmap is a data visualization platform for behind-the-meter (BTM) spread s
 - **Spread Calculation Engine**: Computes BTM spread scores using the formula: `Spread = LMP - (Waha Price × Heat Rate + O&M Cost)`
 - **SQLite Database**: Persistent storage for nodes, LMP records, gas prices, and calculated spread scores
 - **RESTful API**: FastAPI endpoints for heatmap data, site details, live conditions, and nearest-node queries
+- **Forecast Placeholder Endpoint**: `POST /api/site/{node_id}/forecast` is ready for future ML model integration
 - **CORS Support**: Enabled for frontend development on localhost:5173
 
 ### Frontend Features
 - **Interactive Leaflet Map**: Displays West Texas with colored markers representing spread scores at each node
 - **Layer Toggles**: Control visibility of county boundaries, heatmap visualization, and gas pipeline overlay
 - **Site Detail Panel**: Click-through interface showing historical data and metrics for selected nodes
+- **Forecast Tab**: New placeholder Forecast tab in the side panel for future ML-driven node forecasting
 - **Filtering System**: Filter nodes by type (hub, load zone, resource) and spread value (positive, negative, all)
 - **Search Functionality**: Search nodes by name, ID, or zone
 - **Heatmap Metric Selection**: Switch between visualizing LMP, spread, or gas cost
@@ -122,9 +124,12 @@ Negative spread = Grid power is cheaper = Purchase from grid
 | `GET /api/site/{node_id}` | Full historical data for a specific node |
 | `GET /api/site/{node_id}/live` | Current live conditions for a node |
 | `GET /api/nearest?lat=&lng=` | Find nearest node to coordinates |
+| `POST /api/site/{node_id}/forecast` | Placeholder endpoint for future ML forecast generation |
 | `GET /api/points` | GeoJSON feature collection of all nodes |
 | `GET /data/points.json` | Static cached points data |
 | `GET /data/texas-counties.geojson` | Texas county boundaries |
+
+> Forecasting is currently a placeholder route implemented in `global_site/backend/api/routes.py` as `POST /api/site/{node_id}/forecast`. It is ready for future ML-driven prediction logic based on selected node features and historical data.
 
 ---
 

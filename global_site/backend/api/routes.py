@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -327,6 +327,32 @@ def get_site_live(node_id: str, db: Session = Depends(get_db)):
         "cost_to_gen":    round(cost, 2),
         "current_spread": round(spread, 2),
         "recommendation": "Generate" if spread > 0 else "Import from grid",
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/site/{node_id}/forecast
+# Placeholder endpoint for future site-level ML forecasts
+# ---------------------------------------------------------------------------
+@router.post("/site/{node_id}/forecast")
+def request_site_forecast(
+    node_id: str,
+    forecast_params: dict = Body(default={}),
+    db: Session = Depends(get_db)
+):
+    """
+    Placeholder endpoint for generating a forecast for a specific node.
+    Future implementation will run an ML model using the selected node's features and historical data.
+    """
+    node = db.query(Node).filter(Node.id == node_id).first()
+    if not node:
+        raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
+
+    return {
+        "node_id": node_id,
+        "status": "placeholder",
+        "message": "Forecast endpoint placeholder. ML model integration coming soon.",
+        "requested_params": forecast_params,
     }
 
 

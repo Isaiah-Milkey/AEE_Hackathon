@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine, Legend, Area, ComposedChart
@@ -6,6 +6,48 @@ import {
 
 export default function SitePanel({ site, live, onClose, onRefresh, refreshing, analytics, scorecard }) {
   const { node, score, chart_data, customClick, distanceMiles, accuracyFlag } = site
+
+  const [activeTab, setActiveTab] = useState('details')
+  const [forecastLoading, setForecastLoading] = useState(false)
+  const [forecastMessage, setForecastMessage] = useState('')
+  const [forecastError, setForecastError] = useState('')
+
+  const apiBase = import.meta.env.VITE_API_URL || ''
+
+  useEffect(() => {
+    setActiveTab('details')
+    setForecastLoading(false)
+    setForecastMessage('')
+    setForecastError('')
+  }, [node?.id])
+
+  const handleRunForecast = async () => {
+    if (!node?.id) return
+
+    setForecastLoading(true)
+    setForecastError('')
+    setForecastMessage('')
+
+    try {
+      const response = await fetch(`${apiBase}/api/site/${node.id}/forecast`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: node.id }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(errorText || `Forecast request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+      setForecastMessage(data.message || 'Forecast endpoint placeholder called successfully.')
+    } catch (err) {
+      setForecastError(err?.message || 'Forecast request failed.')
+    } finally {
+      setForecastLoading(false)
+    }
+  }
 
   // Thin chart data to last 180 points for performance
   const chartData = (chart_data || []).slice(-180)
@@ -28,6 +70,24 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
         </div>
         <button onClick={onClose} style={styles.closeBtn}>✕</button>
       </div>
+
+      <div style={styles.tabBar}>
+        <button
+          style={activeTab === 'details' ? { ...styles.tabButton, ...styles.tabButtonActive } : styles.tabButton}
+          onClick={() => setActiveTab('details')}
+        >
+          Details
+        </button>
+        <button
+          style={activeTab === 'forecast' ? { ...styles.tabButton, ...styles.tabButtonActive } : styles.tabButton}
+          onClick={() => setActiveTab('forecast')}
+        >
+          Forecast
+        </button>
+      </div>
+
+      {activeTab === 'details' && (
+        <>
 
       {/* Spread score badge */}
       <div style={styles.scoreRow}>
@@ -279,6 +339,32 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
           <SummaryItem label="Avg Spread"   value={`${score.avg_spread > 0 ? '+' : ''}$${score.avg_spread}/MWh`} />
         </div>
       )}
+      </>
+      )}
+
+      {activeTab === 'forecast' && (
+        <div style={styles.forecastSection}>
+          <div style={styles.sectionTitle}>FORECAST</div>
+          <div style={styles.forecastCard}>
+            <p style={styles.forecastText}>
+              Run a forecast for this node using future ML-driven modeling. This currently calls a placeholder endpoint for future integration.
+            </p>
+            <button
+              onClick={handleRunForecast}
+              disabled={forecastLoading}
+              style={styles.forecastButton}
+            >
+              {forecastLoading ? 'Running forecast…' : 'Run forecast'}
+            </button>
+            {forecastMessage && (
+              <div style={styles.forecastMessage}>{forecastMessage}</div>
+            )}
+            {forecastError && (
+              <div style={styles.forecastError}>{forecastError}</div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )
@@ -521,8 +607,63 @@ const styles = {
     marginBottom: '2px',
     fontWeight:   700,
   },
+  tabBar: {
+    display: 'flex',
+    gap: '8px',
+    padding: '0 16px 12px',
+  },
+  tabButton: {
+    flex: 1,
+    background: '#0d1117',
+    border: '1px solid #30363d',
+    color: '#8b949e',
+    padding: '10px 12px',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '12px',
+    fontWeight: 700,
+  },
+  tabButtonActive: {
+    background: '#161b22',
+    borderColor: '#58a6ff',
+    color: '#58a6ff',
+  },
+  forecastSection: {
+    padding: '16px',
+    margin: '0 16px 16px',
+    background: '#0d1117',
+    border: '1px solid #21262d',
+    borderRadius: '8px',
+  },
+  forecastCard: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+  },
+  forecastText: {
+    color: '#c9d1d9',
+    fontSize: '13px',
+    lineHeight: '1.6',
+  },
+  forecastButton: {
+    background: '#58a6ff',
+    color: '#0d1117',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '10px 14px',
+    cursor: 'pointer',
+    fontWeight: 700,
+    fontSize: '13px',
+  },
+  forecastMessage: {
+    color: '#7ee0ff',
+    fontSize: '12px',
+  },
+  forecastError: {
+    color: '#ff7b72',
+    fontSize: '12px',
+  },
   chartHint: {
-    fontSize:     '9px',
     color:        '#484f58',
     marginBottom: '8px',
   },
