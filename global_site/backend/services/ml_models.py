@@ -9,7 +9,8 @@ This module handles loading and running the 8 trained LightGBM models:
 import os
 import numpy as np
 import lightgbm as lgb
-from typing import Dict, Optional, Tuple
+import shap
+from typing import Dict, Optional, Tuple, List
 from datetime import datetime, timedelta
 import logging
 
@@ -122,9 +123,9 @@ class ModelService:
         self,
         features: np.ndarray,
         forecast_time: datetime
-    ) -> Dict[str, Dict[str, Dict[str, float]]]:
+    ) -> Dict[str, Dict[str, Dict[str, any]]]:
         """
-        Run all 8 models and return complete forecast suite.
+        Run all 8 models and return complete forecast suite with explanations.
 
         Args:
             features: 10-element feature array
@@ -134,14 +135,20 @@ class ModelService:
             Nested dictionary with structure:
             {
                 'electricity': {
-                    '1h': {'price': 45.2, 'timestamp': '2026-04-19T15:30:00'},
-                    '6h': {'price': 42.8, 'timestamp': '2026-04-19T20:30:00'},
+                    '1h': {
+                        'price': 45.2,
+                        'timestamp': '2026-04-19T15:30:00',
+                        'btm_cost': 25.8,
+                        'spread': 19.4,
+                        'dispatch_decision': 'GENERATE',
+                        'explanation': [
+                            {'feature_name': 'price_lag_1h', 'value': 34.2, 'shap_impact': 8.4},
+                            ...
+                        ]
+                    },
                     ...
                 },
-                'gas': {
-                    '1h': {'price': 3.2, 'timestamp': '2026-04-19T15:30:00'},
-                    ...
-                }
+                'gas': { ... }
             }
         """
         results = {
@@ -155,20 +162,44 @@ class ModelService:
             'gas': 'gas'
         }
 
+        # Get henry_hub_price for BTM cost calculations (first feature)
+        henry_hub_price = float(features[0])
+
         for model_commodity, result_commodity in commodities.items():
             for horizon in horizons:
                 try:
                     # Generate prediction
                     price = self.predict_single(features, model_commodity, horizon)
 
+                    # Generate SHAP explanation for electricity only (gas explanations less critical)
+                    explanation = []
+                    if result_commodity == 'electricity':
+                        explanation = self.explain_prediction(features, model_commodity, horizon)
+
                     # Calculate target timestamp
                     hours_ahead = int(horizon.replace('h', ''))
                     target_timestamp = forecast_time + timedelta(hours=hours_ahead)
 
-                    results[result_commodity][horizon] = {
+                    result_dict = {
                         'price': round(price, 2),
                         'timestamp': target_timestamp.isoformat()
                     }
+
+                    # Add BTM economics for electricity forecasts
+                    if result_commodity == 'electricity':
+                        # BTM cost = henry_hub_price × 7.2 (heat rate) + 5 (O&M)
+                        btm_cost = henry_hub_price * 7.2 + 5
+                        spread = price - btm_cost
+                        dispatch_decision = 'GENERATE' if spread > 0 else 'BUY FROM GRID'
+
+                        result_dict.update({
+                            'btm_cost': round(btm_cost, 2),
+                            'spread': round(spread, 2),
+                            'dispatch_decision': dispatch_decision,
+                            'explanation': explanation
+                        })
+
+                    results[result_commodity][horizon] = result_dict
 
                 except ModelLoadingError as e:
                     logger.error(f"Failed to predict {model_commodity}_{horizon}: {str(e)}")
@@ -220,6 +251,93 @@ class ModelService:
 
         if np.any(np.isinf(features)):
             raise ValueError("Features contain infinite values")
+
+    def explain_prediction(
+        self,
+        features: np.ndarray,
+        commodity: str,
+        horizon: str
+    ) -> List[Dict[str, any]]:
+        """
+        Generate SHAP explanations for a prediction.
+
+        Args:
+            features: 10-element feature array
+            commodity: 'elec' or 'gas'
+            horizon: '1h', '6h', '24h', or '72h'
+
+        Returns:
+            List of top 5 feature explanations sorted by absolute SHAP value:
+            [
+                {feature_name: 'price_lag_1h', value: 34.2, shap_impact: +8.4},
+                {feature_name: 'hour', value: 8, shap_impact: -3.1},
+                ...
+            ]
+        """
+        model_key = f"{commodity}_{horizon}"
+
+        if model_key not in self.models:
+            raise ModelLoadingError(f"Model not available: {model_key}")
+
+        model = self.models[model_key]
+
+        # Feature names in order (matching the 10 features expected by models)
+        feature_names = [
+            'henry_hub_price',
+            'hour',
+            'day_of_week',
+            'month',
+            'is_weekend',
+            'price_lag_1h',
+            'price_lag_24h',
+            'price_lag_168h',
+            'gas_lag_24h',
+            'gas_lag_168h'
+        ]
+
+        try:
+            # Create SHAP explainer for this model
+            explainer = shap.TreeExplainer(model)
+
+            # Compute SHAP values - features should be 2D array
+            features_2d = features.reshape(1, -1)
+            shap_values = explainer.shap_values(features_2d)
+
+            # shap_values is a 1D array for regression models
+            if isinstance(shap_values, list):
+                # For multi-class models, take first class
+                shap_values = shap_values[0][0]
+            else:
+                # For regression models
+                shap_values = shap_values[0]
+
+            # Create feature explanations
+            explanations = []
+            for i, (feature_name, feature_value, shap_value) in enumerate(
+                zip(feature_names, features, shap_values)
+            ):
+                explanations.append({
+                    'feature_name': feature_name,
+                    'value': float(feature_value),
+                    'shap_impact': round(float(shap_value), 3)
+                })
+
+            # Sort by absolute SHAP value (most important first)
+            explanations.sort(key=lambda x: abs(x['shap_impact']), reverse=True)
+
+            # Return top 5 features
+            return explanations[:5]
+
+        except Exception as e:
+            logger.error(f"SHAP explanation failed for {model_key}: {str(e)}")
+            # Return fallback explanation
+            return [
+                {
+                    'feature_name': 'explanation_unavailable',
+                    'value': 0.0,
+                    'shap_impact': 0.0
+                }
+            ]
 
     def predict_with_validation(
         self,
