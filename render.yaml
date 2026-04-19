@@ -3,8 +3,8 @@ services:
     name: btm-backend
     env: python
     plan: free
-    buildCommand: pip install -r global_site/backend/requirements.txt
-    startCommand: uvicorn global_site.backend.main:app --host 0.0.0.0 --port 8000
+    buildCommand: cd global_site/backend && pip install -r requirements.txt
+    startCommand: cd global_site/backend && uvicorn main:app --host 0.0.0.0 --port 8000
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
@@ -14,8 +14,6 @@ services:
           name: aee_hackathon
           property: connectionString
       - key: FRONTEND_URL
-        value: aee-hackathon.vercel.app
-        # Replace YOUR_VERCEL_URL after you deploy frontend
+        value: https://aee-hackathon.vercel.app
       - key: EIA_API_KEY
         sync: false
-        # You'll set this in the Render dashboard
