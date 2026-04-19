@@ -1,0 +1,6 @@
+backend/
+*.py
+*.pyc
+requirements.txt
+seed.py
+__pycache__/
