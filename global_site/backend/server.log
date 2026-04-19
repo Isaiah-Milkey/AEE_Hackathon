@@ -1,0 +1,7 @@
+/Users/gursp/Desktop/AEE Hacks/AEE_Hackathon/global_site/backend/main.py:39: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")

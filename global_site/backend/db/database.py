@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer
+from sqlalchemy import create_engine, Column, String, Float, DateTime, Integer, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -48,6 +48,11 @@ class LMPRecord(Base):
     congestion  = Column(Float)   # $/MWh congestion component
     loss        = Column(Float)   # $/MWh loss component
 
+    # Index for ML feature engineering queries (168-hour lookbacks)
+    __table_args__ = (
+        Index('idx_lmp_history_node_timestamp', 'node_id', 'timestamp'),
+    )
+
 
 class GasPriceRecord(Base):
     """
@@ -61,6 +66,11 @@ class GasPriceRecord(Base):
     henry_hub_price      = Column(Float)   # $/MMBtu
     waha_price           = Column(Float)   # $/MMBtu
     basis_differential   = Column(Float)   # waha - henry_hub (usually negative)
+
+    # Index for gas price queries
+    __table_args__ = (
+        Index('idx_gas_prices_date', 'date'),
+    )
 
 
 class SpreadScore(Base):

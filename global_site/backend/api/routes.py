@@ -4,9 +4,10 @@ routes.py
 All API endpoints for the BTM heatmap backend.
 """
 
+import logging
 import math
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
@@ -16,6 +17,7 @@ from sqlalchemy import func
 
 from db.database import get_db, Node, LMPRecord, GasPriceRecord, SpreadScore
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api")
 PIPELINE_QUERY_URL = "https://arcgis.netl.doe.gov/server/rest/services/Hosted/Natural_Gas_Pipelines/FeatureServer/10/query"
 TEXAS_OUTLINE_URL = "https://raw.githubusercontent.com/glynnbird/usstatesgeojson/master/texas.geojson"
@@ -332,7 +334,7 @@ def get_site_live(node_id: str, db: Session = Depends(get_db)):
 
 # ---------------------------------------------------------------------------
 # POST /api/site/{node_id}/forecast
-# Placeholder endpoint for future site-level ML forecasts
+# ML Forecast endpoint
 # ---------------------------------------------------------------------------
 @router.post("/site/{node_id}/forecast")
 def request_site_forecast(
@@ -341,19 +343,79 @@ def request_site_forecast(
     db: Session = Depends(get_db)
 ):
     """
-    Placeholder endpoint for generating a forecast for a specific node.
-    Future implementation will run an ML model using the selected node's features and historical data.
+    Generate ML-powered forecasts for electricity and gas prices at a specific node.
+    Uses 8 trained LightGBM models to predict prices 1h, 6h, 24h, and 72h ahead.
     """
+    import os
+    from services.feature_engineering import create_model_features, validate_feature_array
+    from services.ml_models import get_model_service, ModelLoadingError
+
+    # Validate node exists
     node = db.query(Node).filter(Node.id == node_id).first()
     if not node:
         raise HTTPException(status_code=404, detail=f"Node {node_id} not found")
 
-    return {
-        "node_id": node_id,
-        "status": "placeholder",
-        "message": "Forecast endpoint placeholder. ML model integration coming soon.",
-        "requested_params": forecast_params,
-    }
+    try:
+        # Use current time as forecast baseline
+        forecast_time = datetime.now()
+
+        # Generate features for ML models
+        features = create_model_features(db, node_id, forecast_time)
+        validate_feature_array(features, node_id)
+
+        # Get model service and generate predictions
+        models_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models')
+        model_service = get_model_service(models_dir)
+
+        forecast_results, model_status = model_service.predict_with_validation(
+            features, forecast_time
+        )
+
+        # Determine data quality
+        sufficient_history = model_status['loaded_models'] >= 6  # At least 6 of 8 models working
+
+        return {
+            "node_id": node_id,
+            "forecast_time": forecast_time.isoformat(),
+            "status": "success",
+            "forecasts": forecast_results,
+            "data_quality": {
+                "sufficient_history": sufficient_history,
+                "models_loaded": f"{model_status['loaded_models']}/8",
+                "missing_models": model_status['missing_models']
+            },
+            "model_features": {
+                "henry_hub_price": round(float(features[0]), 2),
+                "forecast_hour": int(features[1]),
+                "day_of_week": int(features[2]),
+                "month": int(features[3]),
+                "is_weekend": bool(features[4])
+            }
+        }
+
+    except ValueError as e:
+        # Feature engineering or validation errors
+        logger.error(f"Feature engineering failed for node {node_id}: {str(e)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient data for forecast: {str(e)}"
+        )
+
+    except ModelLoadingError as e:
+        # Model loading or prediction errors
+        logger.error(f"Model prediction failed for node {node_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Forecast models unavailable: {str(e)}"
+        )
+
+    except Exception as e:
+        # Unexpected errors
+        logger.error(f"Unexpected error in forecast for node {node_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error during forecast generation"
+        )
 
 
 # ---------------------------------------------------------------------------

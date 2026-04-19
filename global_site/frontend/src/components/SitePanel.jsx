@@ -11,6 +11,8 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
   const [forecastLoading, setForecastLoading] = useState(false)
   const [forecastMessage, setForecastMessage] = useState('')
   const [forecastError, setForecastError] = useState('')
+  const [forecastData, setForecastData] = useState(null)
+  const [selectedHorizon, setSelectedHorizon] = useState('24h')
 
   const apiBase = import.meta.env.VITE_API_URL || ''
 
@@ -27,6 +29,7 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
     setForecastLoading(true)
     setForecastError('')
     setForecastMessage('')
+    setForecastData(null)
 
     try {
       const response = await fetch(`${apiBase}/api/site/${node.id}/forecast`, {
@@ -36,12 +39,18 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
       })
 
       if (!response.ok) {
-        const errorText = await response.text()
-        throw new Error(errorText || `Forecast request failed with status ${response.status}`)
+        const errorData = await response.json().catch(() => ({ detail: `Request failed with status ${response.status}` }))
+        throw new Error(errorData.detail || `Forecast request failed with status ${response.status}`)
       }
 
       const data = await response.json()
-      setForecastMessage(data.message || 'Forecast endpoint placeholder called successfully.')
+
+      if (data.status === 'success' && data.forecasts) {
+        setForecastData(data)
+        setForecastMessage(`Forecast generated successfully for ${data.forecasts.electricity ? Object.keys(data.forecasts.electricity).length : 0} time horizons.`)
+      } else {
+        setForecastMessage(data.message || 'Forecast generated with limited results.')
+      }
     } catch (err) {
       setForecastError(err?.message || 'Forecast request failed.')
     } finally {
@@ -347,7 +356,7 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
           <div style={styles.sectionTitle}>FORECAST</div>
           <div style={styles.forecastCard}>
             <p style={styles.forecastText}>
-              Run a forecast for this node using future ML-driven modeling. This currently calls a placeholder endpoint for future integration.
+              Generate ML-powered forecasts for electricity and gas prices using 8 trained models predicting 1h, 6h, 24h, and 72h ahead.
             </p>
             <button
               onClick={handleRunForecast}
@@ -361,6 +370,91 @@ export default function SitePanel({ site, live, onClose, onRefresh, refreshing, 
             )}
             {forecastError && (
               <div style={styles.forecastError}>{forecastError}</div>
+            )}
+
+            {/* Forecast Results */}
+            {forecastData && forecastData.forecasts && (
+              <div style={styles.forecastResults}>
+                {/* Time Horizon Selector */}
+                <div style={styles.horizonSelector}>
+                  <span style={styles.horizonLabel}>Time Horizon:</span>
+                  {['1h', '6h', '24h', '72h'].map(horizon => (
+                    <button
+                      key={horizon}
+                      onClick={() => setSelectedHorizon(horizon)}
+                      style={selectedHorizon === horizon ?
+                        { ...styles.horizonButton, ...styles.horizonButtonActive } :
+                        styles.horizonButton}
+                    >
+                      {horizon}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Forecast Values Display */}
+                <div style={styles.forecastGrid}>
+                  {forecastData.forecasts.electricity && forecastData.forecasts.electricity[selectedHorizon] && (
+                    <div style={styles.forecastItem}>
+                      <div style={styles.forecastItemLabel}>Electricity Price</div>
+                      <div style={styles.forecastItemValue}>
+                        ${forecastData.forecasts.electricity[selectedHorizon].price}/MWh
+                      </div>
+                      <div style={styles.forecastItemTime}>
+                        {new Date(forecastData.forecasts.electricity[selectedHorizon].timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+
+                  {forecastData.forecasts.gas && forecastData.forecasts.gas[selectedHorizon] && (
+                    <div style={styles.forecastItem}>
+                      <div style={styles.forecastItemLabel}>Gas Price</div>
+                      <div style={styles.forecastItemValue}>
+                        ${forecastData.forecasts.gas[selectedHorizon].price}/MMBtu
+                      </div>
+                      <div style={styles.forecastItemTime}>
+                        {new Date(forecastData.forecasts.gas[selectedHorizon].timestamp).toLocaleString()}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Data Quality Indicators */}
+                {forecastData.data_quality && (
+                  <div style={styles.dataQuality}>
+                    <div style={styles.dataQualityTitle}>Model Status</div>
+                    <div style={styles.dataQualityItem}>
+                      Models loaded: {forecastData.data_quality.models_loaded}
+                    </div>
+                    {forecastData.data_quality.missing_models && forecastData.data_quality.missing_models.length > 0 && (
+                      <div style={styles.dataQualityWarning}>
+                        Missing models: {forecastData.data_quality.missing_models.join(', ')}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Forecast Summary Table */}
+                <div style={styles.forecastTable}>
+                  <div style={styles.forecastTableTitle}>All Forecast Results</div>
+                  <div style={styles.forecastTableGrid}>
+                    <div style={styles.forecastTableHeader}>Time</div>
+                    <div style={styles.forecastTableHeader}>Electricity ($/MWh)</div>
+                    <div style={styles.forecastTableHeader}>Gas ($/MMBtu)</div>
+
+                    {['1h', '6h', '24h', '72h'].map(horizon => (
+                      <React.Fragment key={horizon}>
+                        <div style={styles.forecastTableCell}>{horizon}</div>
+                        <div style={styles.forecastTableCell}>
+                          {forecastData.forecasts.electricity?.[horizon]?.price || 'N/A'}
+                        </div>
+                        <div style={styles.forecastTableCell}>
+                          {forecastData.forecasts.gas?.[horizon]?.price || 'N/A'}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
@@ -662,6 +756,123 @@ const styles = {
   forecastError: {
     color: '#ff7b72',
     fontSize: '12px',
+  },
+  forecastResults: {
+    marginTop: '16px',
+    padding: '12px',
+    background: '#161b22',
+    border: '1px solid #30363d',
+    borderRadius: '6px',
+  },
+  horizonSelector: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    marginBottom: '16px',
+  },
+  horizonLabel: {
+    color: '#8b949e',
+    fontSize: '12px',
+    fontWeight: '500',
+  },
+  horizonButton: {
+    background: '#21262d',
+    color: '#c9d1d9',
+    border: '1px solid #30363d',
+    padding: '4px 8px',
+    borderRadius: '4px',
+    fontSize: '11px',
+    cursor: 'pointer',
+  },
+  horizonButtonActive: {
+    background: '#58a6ff',
+    color: '#0d1117',
+    borderColor: '#58a6ff',
+  },
+  forecastGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '12px',
+    marginBottom: '16px',
+  },
+  forecastItem: {
+    padding: '8px',
+    background: '#0d1117',
+    borderRadius: '4px',
+    border: '1px solid #21262d',
+  },
+  forecastItemLabel: {
+    color: '#8b949e',
+    fontSize: '10px',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    marginBottom: '4px',
+  },
+  forecastItemValue: {
+    color: '#c9d1d9',
+    fontSize: '14px',
+    fontWeight: '600',
+    marginBottom: '2px',
+  },
+  forecastItemTime: {
+    color: '#7d8590',
+    fontSize: '9px',
+  },
+  dataQuality: {
+    marginBottom: '12px',
+    padding: '8px',
+    background: '#0d1117',
+    border: '1px solid #21262d',
+    borderRadius: '4px',
+  },
+  dataQualityTitle: {
+    color: '#8b949e',
+    fontSize: '10px',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    marginBottom: '4px',
+  },
+  dataQualityItem: {
+    color: '#c9d1d9',
+    fontSize: '11px',
+  },
+  dataQualityWarning: {
+    color: '#f0c419',
+    fontSize: '11px',
+    marginTop: '2px',
+  },
+  forecastTable: {
+    background: '#0d1117',
+    border: '1px solid #21262d',
+    borderRadius: '4px',
+    overflow: 'hidden',
+  },
+  forecastTableTitle: {
+    color: '#8b949e',
+    fontSize: '10px',
+    fontWeight: '500',
+    textTransform: 'uppercase',
+    padding: '8px',
+    background: '#161b22',
+    borderBottom: '1px solid #21262d',
+  },
+  forecastTableGrid: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr 1fr',
+  },
+  forecastTableHeader: {
+    padding: '6px 8px',
+    background: '#21262d',
+    color: '#8b949e',
+    fontSize: '10px',
+    fontWeight: '500',
+    borderBottom: '1px solid #30363d',
+  },
+  forecastTableCell: {
+    padding: '6px 8px',
+    color: '#c9d1d9',
+    fontSize: '11px',
+    borderBottom: '1px solid #21262d',
   },
   chartHint: {
     color:        '#484f58',
